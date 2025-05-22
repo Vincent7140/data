@@ -1,30 +1,43 @@
-import json
+# Recharger les dépendances et relancer le traitement suite au reset
+import rasterio
 import numpy as np
+from rasterio.transform import xy
 from pyproj import Transformer
-import pandas as pd
+from rpcfit.rpc_fit import calibrate_rpc
 from rpcm.rpc_model import RPCModel
-from calibrate_rpc import calibrate_rpc
+import json
 
-# --- Lecture du JSON d'origine ---
-with open("JAX_214_007_RGB.json", "r") as f:
-    data = json.load(f)
+# Charger le DSM (chemin à ajuster selon ton environnement)
+dsm_path = "JAX_224_CLS.tif"
 
-points_2d = np.array(data["keypoints"]["2d_coordinates"])
-rpc = RPCModel(data["rpc"])
+with rasterio.open(dsm_path) as dsm:
+    z = dsm.read(1)
+    transform = dsm.transform
+    crs = dsm.crs
 
-# --- Localisation : 2D → 3D ---
-alt = 10.0
-altitudes = np.full((points_2d.shape[0],), alt)
-lons, lats = rpc.localization(col=points_2d[:, 0], row=points_2d[:, 1], alt=altitudes)
-points_3d = np.vstack([lons, lats, altitudes]).T
+mask = ~np.isnan(z)
+rows, cols = np.where(mask)
 
-# --- Définir une pose satellite simulée ---
-lon_center, lat_center = -81.6635, 30.3165
-alt_sat = 700000  # en mètres
+num_samples = min(5000, len(rows))
+idx = np.random.choice(len(rows), size=num_samples, replace=False)
+rows_sampled = rows[idx]
+cols_sampled = cols[idx]
 
-transformer = Transformer.from_crs("epsg:4326", "epsg:4978", always_xy=True)
-x_sat, y_sat, z_sat = transformer.transform(lon_center, lat_center, alt_sat)
-x_g, y_g, z_g = transformer.transform(lon_center, lat_center, alt)
+points_utm = [xy(transform, r, c, offset='center') for r, c in zip(rows_sampled, cols_sampled)]
+alts = z[rows_sampled, cols_sampled]
+
+transformer = Transformer.from_crs(crs, "epsg:4326", always_xy=True)
+lons, lats = transformer.transform(*zip(*points_utm))
+points_3d = np.vstack([lons, lats, alts]).T
+
+# Définir une pose satellite fictive (au-dessus du centre)
+lon_center = np.mean(lons)
+lat_center = np.mean(lats)
+alt_sat = 700000
+
+ecef_transformer = Transformer.from_crs("epsg:4326", "epsg:4978", always_xy=True)
+x_sat, y_sat, z_sat = ecef_transformer.transform(lon_center, lat_center, alt_sat)
+x_g, y_g, z_g = ecef_transformer.transform(lon_center, lat_center, np.mean(alts))
 
 z_axis = np.array([x_g - x_sat, y_g - y_sat, z_g - z_sat])
 z_axis /= np.linalg.norm(z_axis)
@@ -32,14 +45,13 @@ north = np.array([0, 0, 1])
 x_axis = np.cross(north, z_axis)
 x_axis /= np.linalg.norm(x_axis)
 y_axis = np.cross(z_axis, x_axis)
-R = np.stack([x_axis, y_axis, z_axis]).T  # matrice de rotation
+R = np.stack([x_axis, y_axis, z_axis]).T
 
-# --- Projection des points 3D dans l'image simulée ---
-points_ecef = np.array([transformer.transform(lon, lat, alt) for lon, lat, alt in points_3d])
-f = 1.0  # focale fictive
+ecef_points = np.array([ecef_transformer.transform(*pt) for pt in points_3d])
+f = 1.0
 projected_uv = []
 
-for pt in points_ecef:
+for pt in ecef_points:
     vec = pt - np.array([x_sat, y_sat, z_sat])
     cam_coords = R.T @ vec
     if cam_coords[2] <= 0:
@@ -50,16 +62,12 @@ for pt in points_ecef:
         projected_uv.append((u, v))
 
 projected_uv = np.array(projected_uv)
+valid = ~np.isnan(projected_uv[:, 0])
+points_3d_valid = points_3d[valid]
+points_2d_valid = projected_uv[valid]
 
-# Filtrer les points valides
-valid_idx = ~np.isnan(projected_uv[:, 0])
-points_3d_valid = points_3d[valid_idx]
-points_2d_valid = projected_uv[valid_idx]
-
-# --- Calibration RPC à partir des nouvelles correspondances 3D → 2D ---
 rpc_artificial = calibrate_rpc(target=points_2d_valid, input_locs=points_3d_valid)
 
-# --- Sauvegarde du modèle RPC recalibré ---
 output_rpc_dict = {
     "row_offset": rpc_artificial.row_offset,
     "col_offset": rpc_artificial.col_offset,
@@ -77,8 +85,8 @@ output_rpc_dict = {
     "col_den": list(rpc_artificial.col_den)
 }
 
-final_json = data.copy()
-final_json["rpc"] = output_rpc_dict
+output_path = "/mnt/data/generated_rpc_from_dsm.json"
+with open(output_path, "w") as f:
+    json.dump(output_rpc_dict, f, indent=2)
 
-with open("JAX_214_007_RPC_orbite_pose_simulee.json", "w") as f:
-    json.dump(final_json, f, indent=2)
+output_path
