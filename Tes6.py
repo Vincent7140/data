@@ -7,7 +7,6 @@ from rpcfit.rpc_fit import calibrate_rpc
 from rpcm.rpc_model import RPCModel
 import json
 
-# Charger le DSM (chemin à ajuster selon ton environnement)
 dsm_path = "JAX_224_CLS.tif"
 
 with rasterio.open(dsm_path) as dsm:
