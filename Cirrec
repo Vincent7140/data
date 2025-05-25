@@ -1,51 +1,19 @@
-# === 1. Charger la pose RPC d'origine et les points 2D du JSON ===
-with open(json_path) as f:
-    data = json.load(f)
-rpc = RPCModel(data["rpc"], dict_format="rpcm")
+# === 5. Reprojection des mêmes points 3D (déjà filtrés) ===
+points_3d_geo = np.vstack([lons, lats, alts_sampled]).T
+ecef_points = np.array([ecef_transformer.transform(*pt) for pt in points_3d_geo])
+projected_uv = []
 
-# Extraire les points 2D
-points_2d_raw = np.array(data["keypoints"]["2d_coordinates"])  # [[col, row], ...]
+for pt in ecef_points:
+    vec = pt - C.reshape(-1)
+    cam_coords = R.T @ vec
+    if cam_coords[2] <= 0:
+        projected_uv.append((np.nan, np.nan))
+    else:
+        u = focal_est * cam_coords[0] / cam_coords[2]
+        v = focal_est * cam_coords[1] / cam_coords[2]
+        projected_uv.append((u, v))
 
-# Séparer les colonnes et lignes
-cols_sampled = points_2d_raw[:, 0].astype(int)
-rows_sampled = points_2d_raw[:, 1].astype(int)
-
-# === 2. Charger la carte de profondeur et récupérer les altitudes ===
-with rasterio.open(dsm_path) as dsm:
-    alt_map = dsm.read(1)
-    height, width = alt_map.shape
-
-# Filtrer les points valides
-valid_mask = (cols_sampled >= 0) & (cols_sampled < width) & (rows_sampled >= 0) & (rows_sampled < height)
-cols_sampled = cols_sampled[valid_mask]
-rows_sampled = rows_sampled[valid_mask]
-alts_sampled = alt_map[rows_sampled, cols_sampled]
-
-# === 3. Obtenir les points 3D (lon, lat, alt) via RPC ===
-lons, lats = rpc.localization(cols_sampled, rows_sampled, alts_sampled)
-transformer = Transformer.from_crs("epsg:4326", "epsg:4978", always_xy=True)
-xs, ys, zs = transformer.transform(lons, lats, alts_sampled)
-points_3d = np.vstack([xs, ys, zs]).T.astype(np.float32)
-
-# === 4. Correspondances 2D (col, row) ===
-points_2d = np.vstack([cols_sampled, rows_sampled]).T.astype(np.float32)
-
-
-with rasterio.open(dsm_path) as dsm:
-    alt_map = dsm.read(1)
-    height, width = alt_map.shape
-
-# Créer un masque : true si la position (row, col) est dans les limites et l'altitude est valide
-mask_valid = (
-    (cols >= 0) & (cols < width) &
-    (rows >= 0) & (rows < height) &
-    ~np.isnan(alt_map[rows, cols])
-)
-
-# Appliquer le masque pour filtrer
-cols_valid = cols[mask_valid]
-rows_valid = rows[mask_valid]
-alts_valid = alt_map[rows_valid, cols_valid]
-
-# Optionnel : points 2D filtrés
-points_2d_valid = np.vstack([cols_valid, rows_valid]).T
+projected_uv = np.array(projected_uv)
+valid = ~np.isnan(projected_uv[:, 0])
+points_3d_valid = points_3d_geo[valid]
+points_2d_valid = projected_uv[valid]
