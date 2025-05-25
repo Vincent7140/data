@@ -5,14 +5,14 @@ import rasterio
 from rpcm.rpc_model import RPCModel
 from rpcfit.rpc_fit import calibrate_rpc
 from rasterio.transform import xy
-from pyproj import Transformer
+from pyproj import Transformer, CRS
 
 # === PARAMÈTRES ===
 json_path = "JAX_214_007_RGB.json"
 dsm_path = "JAX_214_007_RGB_dsm.tif"
 num_points = 5000
 
-# === 1. Charger la pose RPC d'origine et la carte de profondeur ===
+# === 1. Charger la pose RPC d'origine et le DSM ===
 with open(json_path) as f:
     data = json.load(f)
 rpc = RPCModel(data["rpc"], dict_format="rpcm")
@@ -20,76 +20,75 @@ rpc = RPCModel(data["rpc"], dict_format="rpcm")
 with rasterio.open(dsm_path) as dsm:
     alt_map = dsm.read(1)
     height, width = alt_map.shape
+    transform = dsm.transform
+    dsm_crs = dsm.crs
 
+# === 2. Échantillonnage de points valides ===
 rows, cols = np.where(~np.isnan(alt_map))
 idx = np.random.choice(len(rows), size=min(num_points, len(rows)), replace=False)
 rows_sampled = rows[idx]
 cols_sampled = cols[idx]
 alts_sampled = alt_map[rows_sampled, cols_sampled]
 
-# === 2. Obtenir les points 3D (lon, lat, alt) via RPC ===
+# === 3. Conversion en coord. géographiques (lon, lat) ===
 lons, lats = rpc.localization(cols_sampled, rows_sampled, alts_sampled)
-transformer = Transformer.from_crs("epsg:4326", "epsg:4978", always_xy=True)
-xs, ys, zs = transformer.transform(lons, lats, alts_sampled)
-points_3d = np.vstack([xs, ys, zs]).T.astype(np.float32)
 
-# === 3. Créer les correspondances 2D (cols, rows) ===
+# === 4. Conversion en UTM ===
+utm_zone = CRS.from_epsg(32617) if lons[0] > 0 else CRS.from_epsg(32717)  # exemple zone
+transformer = Transformer.from_crs("epsg:4326", utm_zone, always_xy=True)
+x_utm, y_utm = transformer.transform(lons, lats)
+points_3d = np.vstack([x_utm, y_utm, alts_sampled]).T.astype(np.float32)
+
+# === 5. Points image (2D) ===
 points_2d = np.vstack([cols_sampled, rows_sampled]).T.astype(np.float32)
 
-# === 4. Estimer la pose pinhole avec solvePnP ===
-focal_est = 30000
-K = np.array([[focal_est, 0, width/2],
-              [0, focal_est, height/2],
+# === 6. Estimation de pose pinhole ===
+focal_est = 3000
+K = np.array([[focal_est, 0, width / 2],
+              [0, focal_est, height / 2],
               [0, 0, 1]], dtype=np.float32)
 dist_coeffs = np.zeros((4, 1))
-success, rvec, tvec = cv2.solvePnP(points_3d, points_2d, K, dist_coeffs)
+success, rvec, tvec = cv2.solvePnP(points_3d, points_2d, K, dist_coeffs, flags=cv2.SOLVEPNP_ITERATIVE)
 R, _ = cv2.Rodrigues(rvec)
 C = -R.T @ tvec
 
-# === 5. Charger le même DSM pour calibration RPC ===
-with rasterio.open(dsm_path) as dsm:
-    z = dsm.read(1)
-    transform = dsm.transform
-    crs = dsm.crs
-
-mask = ~np.isnan(z)
-rows, cols = np.where(mask)
-num_samples = min(5000, len(rows))
-idx = np.random.choice(len(rows), size=num_samples, replace=False)
+# === 7. Rééchantillonnage pour calibration ===
+rows, cols = np.where(~np.isnan(alt_map))
+idx = np.random.choice(len(rows), size=min(num_points, len(rows)), replace=False)
 rows_sampled = rows[idx]
 cols_sampled = cols[idx]
+alts = alt_map[rows_sampled, cols_sampled]
 
+# coord UTM
 points_utm = [xy(transform, r, c, offset='center') for r, c in zip(rows_sampled, cols_sampled)]
-alts = z[rows_sampled, cols_sampled]
+x_sampled, y_sampled = zip(*points_utm)
 
-transformer_geo = Transformer.from_crs(crs, "epsg:4326", always_xy=True)
-lons, lats = transformer_geo.transform(*zip(*points_utm))
-points_3d_world = np.vstack([lons, lats, alts]).T
+# convert back to lat/lon for RPC fitting
+transformer_inv = Transformer.from_crs(utm_zone, "epsg:4326", always_xy=True)
+lons, lats = transformer_inv.transform(x_sampled, y_sampled)
+points_3d_geo = np.vstack([lons, lats, alts]).T
 
-# === 6. Projection 3D -> 2D avec la pose estimée ===
-ecef_transformer = Transformer.from_crs("epsg:4326", "epsg:4978", always_xy=True)
-ecef_points = np.array([ecef_transformer.transform(*pt) for pt in points_3d_world])
+# projection avec pose pinhole
 projected_uv = []
-
-for pt in ecef_points:
-    vec = pt - C.reshape(-1)
+for pt in np.vstack([x_sampled, y_sampled, alts]).T:
+    vec = pt - C.flatten()
     cam_coords = R.T @ vec
     if cam_coords[2] <= 0:
         projected_uv.append((np.nan, np.nan))
     else:
-        u = focal_est * cam_coords[0] / cam_coords[2]
-        v = focal_est * cam_coords[1] / cam_coords[2]
+        u = focal_est * cam_coords[0] / cam_coords[2] + K[0, 2]
+        v = focal_est * cam_coords[1] / cam_coords[2] + K[1, 2]
         projected_uv.append((u, v))
 
 projected_uv = np.array(projected_uv)
 valid = ~np.isnan(projected_uv[:, 0])
-points_3d_valid = points_3d_world[valid]
+points_3d_valid = points_3d_geo[valid]
 points_2d_valid = projected_uv[valid]
 
-# === 7. Calibrer un RPC artificiel ===
+# === 8. Calibration RPC artificiel ===
 rpc_new = calibrate_rpc(target=points_2d_valid, input_locs=points_3d_valid)
 
-# === 8. Mettre à jour et sauvegarder le JSON d'origine ===
+# === 9. Sauvegarde ===
 rpc_dict = {
     "row_offset": rpc_new.row_offset,
     "col_offset": rpc_new.col_offset,
@@ -109,9 +108,8 @@ rpc_dict = {
 
 final_json = data.copy()
 final_json["rpc"] = rpc_dict
-output_name = "JAX_214_007_RPC.json"
 
-with open(output_name, "w") as f:
+with open("JAX_214_007_RPC_corrected.json", "w") as f:
     json.dump(final_json, f, indent=2)
 
-print(f"Pose sauvegardée dans {output_name}")
+print("Nouvelle pose RPC sauvegardée.")
