@@ -17,3 +17,13 @@ projected_uv = np.array(projected_uv)
 valid = ~np.isnan(projected_uv[:, 0])
 points_3d_valid = points_3d_geo[valid]
 points_2d_valid = projected_uv[valid]
+
+
+
+import matplotlib.pyplot as plt
+
+plt.imshow(alt_map, cmap='gray')
+plt.scatter(cols_sampled, rows_sampled, c='red', s=5)
+plt.title("Points 2D sur la carte d'altitude")
+plt.gca().invert_yaxis()  # car l'origine image est en haut à gauche
+plt.show()
