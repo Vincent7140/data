@@ -76,8 +76,8 @@ for pt in np.vstack([x_sampled, y_sampled, alts]).T:
     if cam_coords[2] <= 0:
         projected_uv.append((np.nan, np.nan))
     else:
-        u = focal_est * cam_coords[0] / cam_coords[2] + K[0, 2]
-        v = focal_est * cam_coords[1] / cam_coords[2] + K[1, 2]
+        u = focal_est * cam_coords[0] / cam_coords[2]
+        v = focal_est * cam_coords[1] / cam_coords[2]
         projected_uv.append((u, v))
 
 projected_uv = np.array(projected_uv)
