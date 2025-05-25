@@ -1,0 +1,31 @@
+# === 1. Charger la pose RPC d'origine et les points 2D du JSON ===
+with open(json_path) as f:
+    data = json.load(f)
+rpc = RPCModel(data["rpc"], dict_format="rpcm")
+
+# Extraire les points 2D
+points_2d_raw = np.array(data["keypoints"]["2d_coordinates"])  # [[col, row], ...]
+
+# Séparer les colonnes et lignes
+cols_sampled = points_2d_raw[:, 0].astype(int)
+rows_sampled = points_2d_raw[:, 1].astype(int)
+
+# === 2. Charger la carte de profondeur et récupérer les altitudes ===
+with rasterio.open(dsm_path) as dsm:
+    alt_map = dsm.read(1)
+    height, width = alt_map.shape
+
+# Filtrer les points valides
+valid_mask = (cols_sampled >= 0) & (cols_sampled < width) & (rows_sampled >= 0) & (rows_sampled < height)
+cols_sampled = cols_sampled[valid_mask]
+rows_sampled = rows_sampled[valid_mask]
+alts_sampled = alt_map[rows_sampled, cols_sampled]
+
+# === 3. Obtenir les points 3D (lon, lat, alt) via RPC ===
+lons, lats = rpc.localization(cols_sampled, rows_sampled, alts_sampled)
+transformer = Transformer.from_crs("epsg:4326", "epsg:4978", always_xy=True)
+xs, ys, zs = transformer.transform(lons, lats, alts_sampled)
+points_3d = np.vstack([xs, ys, zs]).T.astype(np.float32)
+
+# === 4. Correspondances 2D (col, row) ===
+points_2d = np.vstack([cols_sampled, rows_sampled]).T.astype(np.float32)
