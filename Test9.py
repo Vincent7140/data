@@ -9,8 +9,7 @@ from pyproj import Transformer
 
 # === PARAMÈTRES ===
 json_path = "JAX_214_007_RGB.json"
-depth_path = "JAX_214_007_RGB_dsm.tif"
-dsm_path = "JAX_224_CLS.tif"
+dsm_path = "JAX_214_007_RGB_dsm.tif"
 num_points = 5000
 
 # === 1. Charger la pose RPC d'origine et la carte de profondeur ===
@@ -18,7 +17,7 @@ with open(json_path) as f:
     data = json.load(f)
 rpc = RPCModel(data["rpc"], dict_format="rpcm")
 
-with rasterio.open(depth_path) as dsm:
+with rasterio.open(dsm_path) as dsm:
     alt_map = dsm.read(1)
     height, width = alt_map.shape
 
@@ -47,7 +46,7 @@ success, rvec, tvec = cv2.solvePnP(points_3d, points_2d, K, dist_coeffs)
 R, _ = cv2.Rodrigues(rvec)
 C = -R.T @ tvec
 
-# === 5. Charger un autre DSM pour calibration RPC (JAX_224_CLS.tif) ===
+# === 5. Charger le même DSM pour calibration RPC ===
 with rasterio.open(dsm_path) as dsm:
     z = dsm.read(1)
     transform = dsm.transform
@@ -88,28 +87,31 @@ points_3d_valid = points_3d_world[valid]
 points_2d_valid = projected_uv[valid]
 
 # === 7. Calibrer un RPC artificiel ===
-rpc_artificial = calibrate_rpc(target=points_2d_valid, input_locs=points_3d_valid)
+rpc_new = calibrate_rpc(target=points_2d_valid, input_locs=points_3d_valid)
 
-# === 8. Sauvegarder le RPC généré ===
-output_rpc_dict = {
-    "row_offset": rpc_artificial.row_offset,
-    "col_offset": rpc_artificial.col_offset,
-    "lat_offset": rpc_artificial.lat_offset,
-    "lon_offset": rpc_artificial.lon_offset,
-    "alt_offset": rpc_artificial.alt_offset,
-    "row_scale": rpc_artificial.row_scale,
-    "col_scale": rpc_artificial.col_scale,
-    "lat_scale": rpc_artificial.lat_scale,
-    "lon_scale": rpc_artificial.lon_scale,
-    "alt_scale": rpc_artificial.alt_scale,
-    "row_num": list(rpc_artificial.row_num),
-    "row_den": list(rpc_artificial.row_den),
-    "col_num": list(rpc_artificial.col_num),
-    "col_den": list(rpc_artificial.col_den)
+# === 8. Mettre à jour et sauvegarder le JSON d'origine ===
+rpc_dict = {
+    "row_offset": rpc_new.row_offset,
+    "col_offset": rpc_new.col_offset,
+    "lat_offset": rpc_new.lat_offset,
+    "lon_offset": rpc_new.lon_offset,
+    "alt_offset": rpc_new.alt_offset,
+    "row_scale": rpc_new.row_scale,
+    "col_scale": rpc_new.col_scale,
+    "lat_scale": rpc_new.lat_scale,
+    "lon_scale": rpc_new.lon_scale,
+    "alt_scale": rpc_new.alt_scale,
+    "row_num": list(rpc_new.row_num),
+    "row_den": list(rpc_new.row_den),
+    "col_num": list(rpc_new.col_num),
+    "col_den": list(rpc_new.col_den)
 }
 
-output_path = "/mnt/data/generated_rpc_from_pose.json"
-with open(output_path, "w") as f:
-    json.dump(output_rpc_dict, f, indent=2)
+final_json = data.copy()
+final_json["rpc"] = rpc_dict
+output_name = "JAX_214_007_RPC.json"
 
-print("RPC sauvegardé dans :", output_path)
+with open(output_name, "w") as f:
+    json.dump(final_json, f, indent=2)
+
+print(f"Pose sauvegardée dans {output_name}")
