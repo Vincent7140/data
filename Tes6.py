@@ -1,4 +1,4 @@
-# Recharger les dépendances et relancer le traitement suite au reset
+#ger les dépendances et relancer le traitement suite au reset
 import rasterio
 import numpy as np
 from rasterio.transform import xy
@@ -89,3 +89,24 @@ with open(output_path, "w") as f:
     json.dump(output_rpc_dict, f, indent=2)
 
 output_path
+
+
+# Construction du masque de validité combiné
+valid_mask = (
+    (cols_sampled >= 0) & (cols_sampled < width) &
+    (rows_sampled >= 0) & (rows_sampled < height)
+)
+
+# Appliquer le masque avant de chercher les altitudes
+cols_filtered = cols_sampled[valid_mask]
+rows_filtered = rows_sampled[valid_mask]
+
+# Appliquer le test d'altitude ensuite
+alt_values = alt_map[rows_filtered, cols_filtered]
+alt_valid_mask = ~np.isnan(alt_values)
+
+# Masque combiné : index finaux valides
+cols_final = cols_filtered[alt_valid_mask]
+rows_final = rows_filtered[alt_valid_mask]
+alts_final = alt_values[alt_valid_mask]
+
