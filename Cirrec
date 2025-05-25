@@ -29,3 +29,23 @@ points_3d = np.vstack([xs, ys, zs]).T.astype(np.float32)
 
 # === 4. Correspondances 2D (col, row) ===
 points_2d = np.vstack([cols_sampled, rows_sampled]).T.astype(np.float32)
+
+
+with rasterio.open(dsm_path) as dsm:
+    alt_map = dsm.read(1)
+    height, width = alt_map.shape
+
+# Créer un masque : true si la position (row, col) est dans les limites et l'altitude est valide
+mask_valid = (
+    (cols >= 0) & (cols < width) &
+    (rows >= 0) & (rows < height) &
+    ~np.isnan(alt_map[rows, cols])
+)
+
+# Appliquer le masque pour filtrer
+cols_valid = cols[mask_valid]
+rows_valid = rows[mask_valid]
+alts_valid = alt_map[rows_valid, cols_valid]
+
+# Optionnel : points 2D filtrés
+points_2d_valid = np.vstack([cols_valid, rows_valid]).T
