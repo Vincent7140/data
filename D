@@ -1,0 +1,47 @@
+import numpy as np
+import tensorflow as tf
+import matplotlib.pyplot as plt
+from data_handling import pose_spherical
+from render import render_image
+
+# Hypothèses (tu dois ajuster selon ton projet)
+model = load_model(arg_dict['out.path'] + 'model.npy', arg_dict)
+H, W = 512, 512
+radius = 617000.0 / 0.3 / arg_dict['data.image.df']  # cohérent avec le script original
+focal = radius
+hwf = [H, W, focal]
+
+# Vue depuis un azimut de 45° et élévation de 60°
+az_deg = 45
+el_deg = 60
+az = np.deg2rad(az_deg)
+el = np.deg2rad(el_deg)
+
+# Générer la pose (matrice 4x4)
+pose = pose_spherical(az, -el, radius)
+
+# Directions lumière / vue (vecteurs [1, 2] en radians)
+light_dir = tf.reshape(tf.convert_to_tensor([az, el], dtype=tf.float32), [1, 2])
+view_dir = tf.reshape(tf.convert_to_tensor([az, el], dtype=tf.float32), [1, 2])
+
+# Sorties voulues
+rets = ['rgb', 'depth']
+
+# Rendu
+result = render_image(model, arg_dict, hwf, pose, zoom_factor=1.0, light_dirs=light_dir, view_dirs=view_dir, rets=rets)
+
+# Affichage
+plt.figure(figsize=(10, 4))
+plt.subplot(1, 2, 1)
+plt.imshow(result['rgb'])
+plt.title("Image synthétique")
+plt.axis("off")
+
+plt.subplot(1, 2, 2)
+plt.imshow(result['depth'], cmap='inferno')
+plt.title("Carte de profondeur")
+plt.colorbar()
+plt.axis("off")
+plt.show()
+
+
