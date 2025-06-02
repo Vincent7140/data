@@ -103,3 +103,59 @@ for i, az_deg in enumerate(azimuths):
     imageio.imwrite(depth_path, depth_norm)
 
     print(f"Vue {i+1}/{n_views} sauvegardée : {rgb_path}")
+
+
+
+
+
+import numpy as np
+import tensorflow as tf
+import matplotlib.pyplot as plt
+import os
+from data_handling import pose_spherical
+from render import render_image
+from models import load_model
+import imageio
+
+# === CONFIGURATION ===
+output_dir = "./output_views/"  # dossier de sortie
+os.makedirs(output_dir, exist_ok=True)
+
+# Chargement du modèle
+model = load_model(arg_dict['out.path'] + 'model.npy', arg_dict)
+
+# Paramètres d’image
+H, W = 512, 512
+radius = 617000.0 / 0.3 / arg_dict['data.image.df']  # Ajuste selon ta config
+focal = radius
+hwf = [H, W, focal]
+
+# Angles de vue
+n_views = 12
+azimuths = np.linspace(0, 360, n_views, endpoint=False)
+elevation = 60  # angle fixe
+zoom_factor = 1.0
+rets = ['rgb']  # <<< SEULEMENT RGB
+
+# === GÉNÉRATION DES VUES RGB ===
+for i, az_deg in enumerate(azimuths):
+    az = np.deg2rad(az_deg)
+    el = np.deg2rad(elevation)
+
+    # Pose caméra
+    pose = pose_spherical(az, -el, radius)
+
+    # Directions de vue et de lumière
+    view_dir = tf.reshape(tf.convert_to_tensor([az, el], dtype=tf.float32), [1, 2])
+    light_dir = tf.reshape(tf.convert_to_tensor([az, el], dtype=tf.float32), [1, 2])  # même direction ici
+
+    # Rendu
+    result = render_image(model, arg_dict, hwf, pose, zoom_factor, light_dir, view_dir, rets)
+
+    # Sauvegarde image RGB
+    rgb_image = (255 * result['rgb'].numpy()).astype(np.uint8)
+    rgb_path = os.path.join(output_dir, f"view_{i:02d}_rgb.png")
+    imageio.imwrite(rgb_path, rgb_image)
+
+    print(f"Vue {i+1}/{n_views} sauvegardée : {rgb_path}")
+
