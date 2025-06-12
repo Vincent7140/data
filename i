@@ -42,3 +42,15 @@ echo "✅ Environnement SatelliteSfM prêt"
 echo "➡️ Tu peux maintenant lancer :"
 echo ""
 echo "    bash ./preprocess_sfm/install_colmapforvissat.sh"
+
+
+
+
+conda install -c conda-forge \
+  xorg-libx11 \
+  xorg-libxext \
+  xorg-libxrender \
+  libglvnd \
+  libglu \
+  glew \
+  glfw
