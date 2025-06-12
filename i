@@ -47,10 +47,15 @@ echo "    bash ./preprocess_sfm/install_colmapforvissat.sh"
 
 
 conda install -c conda-forge \
-  xorg-libx11 \
-  xorg-libxext \
-  xorg-libxrender \
-  libglvnd \
+  cmake=3.25 \
+  boost=1.78 \
+  eigen=3.3.5 \
+  ceres-solver=1.14.0 \
+  glog=0.3.5 \
+  gflags=2.2.1 \
+  glew=2.1.0 \
+  freeimage=3.18.0 \
+  qt=5.15 \
   libglu \
-  glew \
-  glfw
+  libtiff \
+  suitesparse
