@@ -3,23 +3,12 @@ import tensorflow as tf
 import imageio
 import matplotlib.pyplot as plt
 from io import BytesIO
+from PIL import Image
 from data_handling import pose_spherical
 
 def render_views_to_video(model, arg_dict, hwf, azimuths, elevations, radius, zoom_factor=1.0, rets=['rgb'], fps=10, output_path='output_video.mp4'):
     """
-    Génère une vidéo MP4 à partir de vues synthétiques du modèle NeRF, annotées avec les angles et le rayon.
-
-    Parameters:
-    - model : modèle S-NeRF chargé
-    - arg_dict : dictionnaire de configuration
-    - hwf : tuple (H, W, focal)
-    - azimuths : liste ou array d’angles azimut (°)
-    - elevations : liste ou array d’angles élévation (°)
-    - radius : rayon utilisé pour la caméra
-    - zoom_factor : facteur de zoom pour le rendu
-    - rets : sorties du modèle (par défaut ['rgb'])
-    - fps : images/seconde dans la vidéo
-    - output_path : chemin de sauvegarde du fichier MP4
+    Génère une vidéo MP4 annotée à partir des rendus S-NeRF.
     """
     frames = []
 
@@ -43,22 +32,14 @@ def render_views_to_video(model, arg_dict, hwf, azimuths, elevations, radius, zo
                 ha='right', va='bottom', transform=ax.transAxes,
                 bbox=dict(facecolor='black', alpha=0.6, boxstyle='round,pad=0.3'))
 
-        # Sauvegarde temporaire de la figure dans un buffer mémoire
+        # Convertir figure matplotlib → image numpy avec PIL
         buf = BytesIO()
         plt.savefig(buf, format='png')
         buf.seek(0)
-        annotated_img = imageio.v3.imread(buf)
-        frames.append(annotated_img)
+        pil_img = Image.open(buf).convert("RGB")
+        frames.append(np.array(pil_img))
         plt.close(fig)
 
-    # Écriture vidéo
+    # Sauvegarde vidéo
     imageio.mimwrite(output_path, frames, fps=fps, quality=8)
     print(f"🎥 Vidéo générée : {output_path}")
-
-
-
-azimuths = np.linspace(0, 360, 36, endpoint=False)
-elevations = np.linspace(30, 60, 36, endpoint=False)
-radius = 700000 / (0.3 * arg_dict['data.image.df'])
-
-render_views_to_video(model, arg_dict, hwf, azimuths, elevations, radius)
