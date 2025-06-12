@@ -54,3 +54,11 @@ def render_views_to_video(model, arg_dict, hwf, azimuths, elevations, radius, zo
     # Écriture vidéo
     imageio.mimwrite(output_path, frames, fps=fps, quality=8)
     print(f"🎥 Vidéo générée : {output_path}")
+
+
+
+azimuths = np.linspace(0, 360, 36, endpoint=False)
+elevations = np.linspace(30, 60, 36, endpoint=False)
+radius = 700000 / (0.3 * arg_dict['data.image.df'])
+
+render_views_to_video(model, arg_dict, hwf, azimuths, elevations, radius)
