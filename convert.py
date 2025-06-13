@@ -47,3 +47,15 @@ df = df.round(4)
 df.to_string(open("resultats_angles_degres.txt", "w"), index=False)
 
 print("Conversion terminée. Résultat enregistré dans 'resultats_angles_degres.txt'")
+
+
+Merci pour votre retour et pour les informations concernant la composition du jury ainsi que l’organisation de la soutenance.
+
+Cependant, pour m'assurer que tout est bien en ordre, pourriez-vous me confirmer que vous (ainsi que les membres du jury concernés) acceptez de signer un engagement de responsabilité pour la consultation du rapport et des autres documents confidentiels ? Il s’agit d’une exigence de MBDA pour toute personne ayant accès à ces documents.
+
+Je reste bien entendu à disposition pour transmettre le modèle d’engagement de responsabilité si besoin.
+
+Bien cordialement,
+
+
+Modifié un peu pour que ça colle mieux à mon style
