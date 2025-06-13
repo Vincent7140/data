@@ -30,6 +30,44 @@ def video_rotation_elevation(model, arg_dict, hwf, radius, az_deg_fixed=180, el_
     print(f"[✔] Vidéo elevation sauvegardée : {out_path}")
 
 
+
+import imageio
+import numpy as np
+import tensorflow as tf
+
+def video_rotation_azimuth(model, arg_dict, hwf, radius, el_deg_fixed=60, n_views=60, out_path='azimuth_video.mp4'):
+    """
+    Génère une vidéo en faisant varier l'azimuth (rotation horizontale).
+
+    model     : modèle S-NeRF
+    arg_dict  : dictionnaire de config
+    hwf       : (H, W, focal)
+    radius    : rayon (distance caméra-scène)
+    el_deg_fixed : angle d'élévation fixe en degrés
+    n_views   : nombre d'images (frames)
+    out_path  : chemin de la vidéo en sortie
+    """
+    azimuths = np.linspace(0, 360, n_views, endpoint=False)
+    elevation = np.deg2rad(el_deg_fixed)
+
+    frames = []
+    for az_deg in azimuths:
+        az = np.deg2rad(az_deg)
+        pose = pose_spherical(az, elevation, radius)
+
+        view_dir = tf.reshape(tf.convert_to_tensor([az, elevation], dtype=tf.float32), [1,2])
+        light_dir = view_dir  # même direction pour simplifier
+
+        result = render_image(model, arg_dict, hwf, pose, 1.0, light_dir, view_dir, rets=['rgb'])
+        rgb_image = (255 * result["rgb"].numpy()).astype(np.uint8)
+        frames.append(rgb_image)
+
+    imageio.mimwrite(out_path, frames, fps=10, quality=8)
+    print(f"[✔] Vidéo azimuth sauvegardée : {out_path}")
+
+
+
+
 def video_rotation_elevation(model, arg_dict, hwf, radius, az_deg_fixed=180, el_range=(30, 120), n_views=60, out_path='elevation_video.mp4'):
     """
     Génère une vidéo en faisant varier l'élévation (vue du dessus vers le dessous).
@@ -142,3 +180,9 @@ def video_converge_to_z_axis(model, arg_dict, hwf, az_deg=180, el_deg_fixed=60, 
 
     imageio.mimwrite(out_path, frames, fps=10, quality=8)
     print(f"[✔] Vidéo rapprochement axe Z sauvegardée : {out_path}")
+
+
+
+rgb_image = (255 * result["rgb"].numpy()).astype(np.uint8)
+annotated = annotate_image(rgb_image, az_deg, np.rad2deg(elevation), radius)
+frames.append(annotated)
