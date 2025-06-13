@@ -1,0 +1,20 @@
+def save_rendered_images(dataset_rend, path_prefix="rendered_img_"):
+    """
+    Sauvegarde uniquement les images rendues RGB.
+    
+    Parameters:
+    dataset_rend (list(dict)): Résultats du rendu contenant les images RGB.
+    path_prefix (str): Préfixe pour les fichiers de sortie.
+    """
+    import matplotlib.pyplot as plt
+    import os
+
+    os.makedirs(os.path.dirname(path_prefix), exist_ok=True)
+
+    for i, ret_dict in enumerate(dataset_rend):
+        rgb_img = ret_dict['rgb'].numpy()
+        rgb_img = (255 * np.clip(rgb_img, 0, 1)).astype(np.uint8)
+        plt.imsave(f"{path_prefix}{i:03d}.png", rgb_img)
+
+
+save_rendered_images(dataset_rend['test_rend'], path_prefix=arg_dict['out.path'] + 'rendered_test_')
