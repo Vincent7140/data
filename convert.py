@@ -1,61 +1,38 @@
 import pandas as pd
 import numpy as np
-from io import StringIO
+import os
 
-# Données sources
-data = """
-ID Focal Az El Azs Els
-01 659579.8141473373 0.3455751918948773 1.2095131716320704 2.6232298657474775 0.8866272600131193
-02 634799.1325091638 0.4188790204786391 1.3334315485236679 2.6232298657474775 0.8883725892651138
-03 653341.2095485234 2.410299697004169 1.2356931104119853 2.6337018412594433 0.8464846872172498
-04 623217.4304027049 4.665265090580843 1.429424657383356 2.7279496208671374 0.8237954069413236
-05 648021.1667691888 1.9495327744776663 1.260127719939906 2.717477645355171 0.7435102613495844
-06 640911.2805737767 0.7435102613495844 1.2967796342317868 2.7680921936630067 0.5846852994181004
-07 633229.6345085226 3.8117990863556157 1.3439035240356338 2.77332818141899 0.5846852994181004
-08 642511.7744735102 3.7140606482439336 1.2880529879718152 2.705260340591211 0.6283185307179586
-09 675916.8481949624 3.5883969421003417 1.1501719770642633 2.707005669843205 0.6283185307179586
-10 729147.9353627716 3.5238197597765515 1.0088003076527223 2.7087509990951992 0.6283185307179586
-11 619750.474543281 2.5185101106278176 1.4765485471872026 2.66860842629933 0.6422811647339133
-12 647299.6650592737 0.06632251157578452 1.2636183784438948 2.621484536495483 0.7365289443416071
-13 654949.4387783479 3.2759830059933566 1.2287117934040082 2.357939819444339 1.13271868454432
-14 669789.1610875947 4.54309204294124 1.171115928088195 2.3911010752322315 1.1938052083641215
-15 691250.0593724067 1.4905111812031575 1.1030480872604163 2.181661564992912 1.1571532940722404
-16 658286.4142460275 3.8117990863556157 1.2147491593880533 2.2968532956245378 1.2077678423800762
-18 620991.825075243 4.32143522793796 1.457349925415265 2.1048670779051615 1.2636183784438948
-19 631495.6191850401 1.9442967867216832 1.356120828799594 1.8849555921538759 1.2583823906879115
-20 691861.0777864982 4.516912104161325 1.101302758008422 2.0018926520374962 1.3002702927357754
-21 730758.7269876786 4.434881629317592 1.0053096491487339 2.790781473938933 1.0000736613927508
-22 631736.9845413937 0.9320058205649719 1.3543754995475996 2.8448866807507573 0.7644542123735163
-23 654949.4387783479 2.9286624848464853 1.2287117934040082 2.8501226685067405 0.7644542123735163
-25 667354.547603548 3.7088246604879505 1.1798425743481666 2.73318560862312 0.7452555906015788
-26 710312.7042300093 4.679227724596798 1.0524335389525807 2.7680921936630067 0.7993607974134029
-"""
+def convertir_angles_en_degres(fichier_entree, colonnes_angles=None, sep_auto=True):
+    # Déterminer le séparateur : auto (espace ou virgule)
+    if sep_auto:
+        with open(fichier_entree, 'r') as f:
+            premiere_ligne = f.readline()
+        sep = ',' if ',' in premiere_ligne else r'\s+'
+    else:
+        sep = r'\s+'
 
-# Charger les données
-df = pd.read_csv(StringIO(data), sep=' ')
+    # Lire le fichier
+    df = pd.read_csv(fichier_entree, sep=sep, engine='python')
 
-# Colonnes à convertir
-angle_cols = ['Az', 'El', 'Azs', 'Els']
+    # Colonnes à convertir (par défaut)
+    if colonnes_angles is None:
+        colonnes_angles = ['Az', 'El', 'Azs', 'Els']
 
-# Conversion en degrés
-df[angle_cols] = np.degrees(df[angle_cols])
+    # Vérifier les colonnes présentes
+    colonnes_valides = [col for col in colonnes_angles if col in df.columns]
 
-# Formatage des colonnes flottantes pour lisibilité
-df = df.round(4)
+    # Convertir les radians en degrés
+    df[colonnes_valides] = np.degrees(df[colonnes_valides])
+    df[colonnes_valides] = df[colonnes_valides].round(4)
 
-# Sauvegarde dans un fichier .txt (tableau aligné)
-df.to_string(open("resultats_angles_degres.txt", "w"), index=False)
+    # Nom du fichier de sortie
+    nom_fichier = os.path.splitext(os.path.basename(fichier_entree))[0]
+    fichier_sortie = f"output_{nom_fichier}.txt"
 
-print("Conversion terminée. Résultat enregistré dans 'resultats_angles_degres.txt'")
+    # Sauvegarder
+    df.to_string(open(fichier_sortie, 'w'), index=False)
 
+    print(f"✅ Conversion terminée. Fichier sauvegardé : {fichier_sortie}")
 
-Merci pour votre retour et pour les informations concernant la composition du jury ainsi que l’organisation de la soutenance.
-
-Cependant, pour m'assurer que tout est bien en ordre, pourriez-vous me confirmer que vous (ainsi que les membres du jury concernés) acceptez de signer un engagement de responsabilité pour la consultation du rapport et des autres documents confidentiels ? Il s’agit d’une exigence de MBDA pour toute personne ayant accès à ces documents.
-
-Je reste bien entendu à disposition pour transmettre le modèle d’engagement de responsabilité si besoin.
-
-Bien cordialement,
-
-
-Modifié un peu pour que ça colle mieux à mon style
+# Exemple d'utilisation :
+convertir_angles_en_degres("JAX_260_df1_md.txt")
