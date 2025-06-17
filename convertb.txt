@@ -1,0 +1,5 @@
+mkdir -p png_out
+for f in *.tif; do
+  gdal_translate -scale -ot Byte -of PNG "$f" "png_out/${f%.tif}.png"
+done
+
