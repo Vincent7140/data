@@ -1,0 +1,28 @@
+from PIL import Image
+import numpy as np
+import tifffile as tiff
+
+# Chemin vers l'image TIFF
+tiff_path = "chemin/vers/image.tif"
+
+# Lire l'image avec tifffile
+image_data = tiff.imread(tiff_path)
+
+# Normalisation en [0, 255] et conversion en uint8 si besoin
+if image_data.dtype != np.uint8:
+    image_data = (255 * (image_data - image_data.min()) / (image_data.max() - image_data.min())).astype(np.uint8)
+
+# Si l'image est Channels First (C x H x W), la transposer
+if image_data.ndim == 3 and image_data.shape[0] in [3, 4] and image_data.shape[0] < image_data.shape[1]:
+    image_data = np.transpose(image_data, (1, 2, 0))  # C x H x W → H x W x C
+
+# Si image 2D (grayscale), la convertir en RGB
+if image_data.ndim == 2:
+    image_data = np.stack([image_data] * 3, axis=-1)
+
+# Conversion avec PIL et sauvegarde
+img = Image.fromarray(image_data)
+png_path = "chemin/vers/image.png"
+img.save(png_path)
+
+print(f"Image convertie en PNG : {png_path}")
