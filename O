@@ -1,0 +1,84 @@
+def render_full_orbit_video_annotated(path, model, arg_dict, hwf,
+                                      azimuth_steps=4, elevation_range=(60, 90),
+                                      light_angle=(100, 80), n_frames_per_segment=20, rets=['rgb']):
+    """
+    Render a full azimuthal orbit with annotated video using elevation sweeps.
+    For each azimuth segment:
+        - Elevation sweep 60→90
+        - Azimuth sweep over the segment at 90°
+        - Elevation sweep 90→60
+    """
+    from PIL import Image, ImageDraw, ImageFont
+
+    def annotate_frame(image_array, radius, elevation, azimuth):
+        image = Image.fromarray(image_array)
+        draw = ImageDraw.Draw(image)
+        text = f"Radius: {radius:.1f}\nElevation: {elevation:.1f}° | Azimuth: {azimuth:.1f}°"
+        try:
+            font = ImageFont.truetype("DejaVuSans-Bold.ttf", 20)
+        except IOError:
+            font = ImageFont.load_default()
+        draw.multiline_text((10, 10), text, font=font, fill=(255, 255, 255))
+        return np.array(image)
+
+    frames = {ret: [] for ret in rets}
+    H, W, radius = hwf
+    el_start, el_end = elevation_range
+    azimuth_edges = np.linspace(0, 360, azimuth_steps + 1)
+
+    for i in range(azimuth_steps):
+        az_start, az_end = azimuth_edges[i], azimuth_edges[i + 1]
+
+        # 1. montée élévation (az_start)
+        for el in np.linspace(el_start, el_end, n_frames_per_segment):
+            az = az_start
+            pose = pose_spherical(np.deg2rad(az), -np.deg2rad(el), radius)
+            view_dir = tf.reshape(tf.convert_to_tensor([np.deg2rad(az), np.deg2rad(el)], dtype=def_dtype), [1, 2])
+            light_dir = tf.reshape(tf.convert_to_tensor([np.deg2rad(light_angle[0]), np.deg2rad(light_angle[1])], dtype=def_dtype), [1, 2])
+            ret_dict = render_image(model, arg_dict, hwf, pose, 1.0, light_dirs=light_dir, view_dirs=view_dir, rets=rets)
+            for ret in rets:
+                img = (255 * min_max_normalize(ret_dict[ret].numpy())).astype(np.uint8)
+                if ret == 'rgb':
+                    img = annotate_frame(img, radius, el, az)
+                frames[ret].append(img)
+
+        # 2. azimuth variation à élévation 90
+        el = el_end
+        for az in np.linspace(az_start, az_end, n_frames_per_segment):
+            pose = pose_spherical(np.deg2rad(az), -np.deg2rad(el), radius)
+            view_dir = tf.reshape(tf.convert_to_tensor([np.deg2rad(az), np.deg2rad(el)], dtype=def_dtype), [1, 2])
+            light_dir = tf.reshape(tf.convert_to_tensor([np.deg2rad(light_angle[0]), np.deg2rad(light_angle[1])], dtype=def_dtype), [1, 2])
+            ret_dict = render_image(model, arg_dict, hwf, pose, 1.0, light_dirs=light_dir, view_dirs=view_dir, rets=rets)
+            for ret in rets:
+                img = (255 * min_max_normalize(ret_dict[ret].numpy())).astype(np.uint8)
+                if ret == 'rgb':
+                    img = annotate_frame(img, radius, el, az)
+                frames[ret].append(img)
+
+        # 3. descente élévation (az_end)
+        for el in np.linspace(el_end, el_start, n_frames_per_segment):
+            az = az_end
+            pose = pose_spherical(np.deg2rad(az), -np.deg2rad(el), radius)
+            view_dir = tf.reshape(tf.convert_to_tensor([np.deg2rad(az), np.deg2rad(el)], dtype=def_dtype), [1, 2])
+            light_dir = tf.reshape(tf.convert_to_tensor([np.deg2rad(light_angle[0]), np.deg2rad(light_angle[1])], dtype=def_dtype), [1, 2])
+            ret_dict = render_image(model, arg_dict, hwf, pose, 1.0, light_dirs=light_dir, view_dirs=view_dir, rets=rets)
+            for ret in rets:
+                img = (255 * min_max_normalize(ret_dict[ret].numpy())).astype(np.uint8)
+                if ret == 'rgb':
+                    img = annotate_frame(img, radius, el, az)
+                frames[ret].append(img)
+
+    return [render_video(frames[ret], f'{path}orbit_annotated_{ret}.mp4') for ret in rets]
+
+
+render_full_orbit_video_annotated(
+    path=arg_dict['out.path'],
+    model=model,
+    arg_dict=arg_dict,
+    hwf=[H, W, focal],
+    azimuth_steps=4,  # 0–90, 90–180, 180–270, 270–360
+    elevation_range=(60, 90),
+    n_frames_per_segment=15,
+    rets=['rgb']
+)
+
